@@ -25,6 +25,7 @@ contents: |
         --cloud-provider={{cloudProvider .}} \
         {{.CloudProviderConfig -}} \
         --anonymous-auth=false \
+        ${KUBELET_EXTRA_ARGS} \
 
   Restart=always
   RestartSec=10

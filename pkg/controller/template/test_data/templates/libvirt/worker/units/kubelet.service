@@ -23,6 +23,7 @@ contents: |
         --cloud-provider= \
         \
         --anonymous-auth=false \
+        ${KUBELET_EXTRA_ARGS} \
 
   Restart=always
   RestartSec=10

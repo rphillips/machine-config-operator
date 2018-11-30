@@ -27,6 +27,7 @@ contents: |
         {{.CloudProviderConfig -}} \
         --anonymous-auth=false \
         --register-with-taints=node-role.kubernetes.io/master=:NoSchedule \
+        ${KUBELET_EXTRA_ARGS} \
 
   Restart=always
   RestartSec=10
