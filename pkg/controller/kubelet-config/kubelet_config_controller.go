@@ -366,6 +366,46 @@ func validateUserKubeletConfig(cfg *mcfgv1.KubeletConfig) error {
 	return nil
 }
 
+func newCondition(err error, args ...interface{}) mcfgv1.KubeletConfigCondition {
+	condition := mcfgv1.KubeletConfigCondition{}
+	if err != nil {
+		condition.Status = v1.ConditionFalse
+		condition.Message = fmt.Sprintf("Error: %v", err)
+	} else {
+		condition.Status = v1.ConditionTrue
+	}
+	condition.LastTransitionTime = metav1.Time{}
+	if len(args) > 0 {
+		format, ok := args[0].(string)
+		if ok {
+			condition.Message = fmt.Sprintf(format, args[:1]...)
+		}
+	}
+	return condition
+}
+
+func (ctrl *Controller) updateStatus(cfg *mcfgv1.KubeletConfig, err error, args ...interface{}) {
+	// Fetch the latest KubeletConfig
+	ncfg, err := ctrl.mckLister.Get(cfg.Name)
+	if errors.IsNotFound(err) {
+		glog.V(2).Infof("Update Status: KubeletConfig %v has been deleted", cfg.Name)
+		return
+	}
+	if err != nil {
+		glog.V(2).Infof("Update Status: KubeletConfig %v has been deleted", cfg.Name)
+		return
+	}
+	ncfg.Status.Conditions = append(cfg.Status.Conditions, newCondition(err, args))
+	retry.RetryOnConflict(updateBackoff, func() error {
+		_, err := ctrl.client.Machineconfiguration().KubeletConfigs().UpdateStatus(ncfg)
+		if err != nil {
+			glog.Infof("Update Status Failed: KubeletConfig %v  %v", cfg.Name, err)
+		}
+		return err
+	})
+	glog.Infof("Update Status Success")
+}
+
 // syncKubeletConfig will sync the kubeletconfig with the given key.
 // This function is not meant to be invoked concurrently with the same key.
 func (ctrl *Controller) syncKubeletConfig(key string) error {
@@ -400,17 +440,21 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 
 	// Validate the KubeletConfig CR
 	if err := validateUserKubeletConfig(cfg); err != nil {
+		ctrl.updateStatus(cfg, err)
 		return err
 	}
 
 	// Find all MachineConfigPools
 	mcpPools, err := ctrl.getPoolsForKubeletConfig(cfg)
 	if err != nil {
+		ctrl.updateStatus(cfg, err)
 		return err
 	}
 
 	if len(mcpPools) == 0 {
-		glog.V(2).Infof("KubeletConfig %v does not match any MachineConfigPools", key)
+		err := fmt.Errorf("KubeletConfig %v does not match any MachineConfigPools", key)
+		glog.V(2).Infof("%v", err)
+		ctrl.updateStatus(cfg, err)
 		return nil
 	}
 
@@ -420,6 +464,7 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 		managedKey := getManagedKey(pool, cfg)
 		mc, err := ctrl.client.Machineconfiguration().MachineConfigs().Get(managedKey, metav1.GetOptions{})
 		if err != nil && !errors.IsNotFound(err) {
+			ctrl.updateStatus(cfg, err, "Could not find MachineConfig: %v", managedKey)
 			return err
 		}
 		isNotFound := errors.IsNotFound(err)
@@ -431,24 +476,29 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 		// Generate the original KubeletConfig
 		originalKubeletIgn, err := ctrl.generateOriginalKubeletConfig(role)
 		if err != nil {
+			ctrl.updateStatus(cfg, err, "Could not generate the original Kubelet config: %v", err)
 			return err
 		}
 		dataURL, err := dataurl.DecodeString(originalKubeletIgn.Contents.Source)
 		if err != nil {
+			ctrl.updateStatus(cfg, err, "Could not decode the original Kubelet source string: %v", err)
 			return err
 		}
 		originalKubeConfig, err := decodeKubeletConfig(dataURL.Data)
 		if err != nil {
+			ctrl.updateStatus(cfg, err, "Could not deserialize the Kubelet source: %v", err)
 			return err
 		}
 		// Merge the Old and New
 		err = mergo.Merge(originalKubeConfig, cfg.Spec.KubeletConfig, mergo.WithOverride)
 		if err != nil {
+			ctrl.updateStatus(cfg, err, "Could not merge original config and new config: %v", err)
 			return err
 		}
 		// Encode the new config into YAML
 		cfgYAML, err := encodeKubeletConfig(originalKubeConfig, kubeletconfigv1beta1.SchemeGroupVersion)
 		if err != nil {
+			ctrl.updateStatus(cfg, err, "Could not encode YAML: %v", err)
 			return err
 		}
 		if isNotFound {
@@ -476,12 +526,15 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 			}
 			return err
 		}); err != nil {
+			ctrl.updateStatus(cfg, err, "Could not Create/Update MachineConfig: %v", err)
 			return err
 		}
 		// Add Finalizers to the KubletConfig
 		if err := ctrl.addFinalizerToKubeletConfig(cfg, mc); err != nil {
+			ctrl.updateStatus(cfg, err, "Could not add finalizers to KubeletConfig: %v", err)
 			return err
 		}
+		ctrl.updateStatus(cfg, nil)
 		glog.Infof("Applied KubeletConfig %v on MachineConfigPool %v", key, pool.Name)
 	}
 
