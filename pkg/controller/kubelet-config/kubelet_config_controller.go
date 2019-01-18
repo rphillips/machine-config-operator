@@ -280,18 +280,17 @@ func (ctrl *Controller) generateOriginalKubeletConfig(role string) (*ignv2_2type
 }
 
 func (ctrl *Controller) syncStatusOnly(cfg *mcfgv1.KubeletConfig, err error, args ...interface{}) error {
-	// Fetch the latest KubeletConfig
-	newCfg, err := ctrl.mckLister.Get(cfg.Name)
-	if errors.IsNotFound(err) {
-		glog.V(2).Infof("Update Status: KubeletConfig %v has been deleted", cfg.Name)
-		return nil
-	}
-	if err != nil {
-		glog.V(2).Infof("Update Status: KubeletConfig %v has been deleted", cfg.Name)
-		return nil
-	}
-	newCfg.Status.Conditions = append(newCfg.Status.Conditions, newCondition(err, args))
 	return retry.RetryOnConflict(updateBackoff, func() error {
+		newCfg, err := ctrl.mckLister.Get(cfg.Name)
+		if errors.IsNotFound(err) {
+			glog.V(2).Infof("Update Status: KubeletConfig %v has been deleted", cfg.Name)
+			return nil
+		}
+		if err != nil {
+			glog.V(2).Infof("Update Status: KubeletConfig %v has been deleted", cfg.Name)
+			return nil
+		}
+		newCfg.Status.Conditions = append(newCfg.Status.Conditions, newCondition(err, args))
 		_, err = ctrl.client.MachineconfigurationV1().KubeletConfigs().UpdateStatus(newCfg)
 		if err != nil {
 			glog.Infof("Update Status Failed: KubeletConfig %v  %v", newCfg.Name, err)
@@ -443,7 +442,7 @@ func (ctrl *Controller) popFinalizerFromKubeletConfig(kc *mcfgv1.KubeletConfig) 
 	}
 
 	return retry.RetryOnConflict(updateBackoff, func() error {
-		_, err = ctrl.client.Machineconfiguration().KubeletConfigs().Patch(kc.Name, types.MergePatchType, patch)
+		_, err = ctrl.client.MachineconfigurationV1().KubeletConfigs().Patch(kc.Name, types.MergePatchType, patch)
 		return err
 	})
 }
@@ -468,7 +467,7 @@ func (ctrl *Controller) addFinalizerToKubeletConfig(kc *mcfgv1.KubeletConfig, mc
 	}
 
 	return retry.RetryOnConflict(updateBackoff, func() error {
-		_, err := ctrl.client.Machineconfiguration().KubeletConfigs().Patch(kc.Name, types.MergePatchType, patch)
+		_, err := ctrl.client.MachineconfigurationV1().KubeletConfigs().Patch(kc.Name, types.MergePatchType, patch)
 		return err
 	})
 }
