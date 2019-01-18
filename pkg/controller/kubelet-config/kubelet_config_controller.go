@@ -1,11 +1,9 @@
 package kubeletconfig
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"reflect"
 	"time"
 
 	ignv2_2types "github.com/coreos/ignition/config/v2_2/types"
@@ -17,20 +15,16 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/jsonmergepatch"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	clientset "k8s.io/client-go/kubernetes"
 	coreclientsetv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
-	kubeletconfigscheme "k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig/scheme"
 	kubeletconfigv1beta1 "k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig/v1beta1"
 
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
@@ -227,27 +221,6 @@ func (ctrl *Controller) worker() {
 	}
 }
 
-func createNewKubeletIgnition(ymlconfig []byte) ignv2_2types.Config {
-	var tempIgnConfig ignv2_2types.Config
-	mode := 0644
-	du := dataurl.New(ymlconfig, "text/plain")
-	du.Encoding = dataurl.EncodingASCII
-	tempFile := ignv2_2types.File{
-		Node: ignv2_2types.Node{
-			Filesystem: "root",
-			Path:       "/etc/kubernetes/kubelet.conf",
-		},
-		FileEmbedded1: ignv2_2types.FileEmbedded1{
-			Mode: &mode,
-			Contents: ignv2_2types.FileContents{
-				Source: du.String(),
-			},
-		},
-	}
-	tempIgnConfig.Storage.Files = append(tempIgnConfig.Storage.Files, tempFile)
-	return tempIgnConfig
-}
-
 func (ctrl *Controller) processNextWorkItem() bool {
 	key, quit := ctrl.queue.Get()
 	if quit {
@@ -279,15 +252,6 @@ func (ctrl *Controller) handleErr(err error, key interface{}) {
 	ctrl.queue.AddAfter(key, 1*time.Minute)
 }
 
-func findKubeletConfig(mc *mcfgv1.MachineConfig) (*ignv2_2types.File, error) {
-	for _, c := range mc.Spec.Config.Storage.Files {
-		if c.Path == "/etc/kubernetes/kubelet.conf" {
-			return &c, nil
-		}
-	}
-	return nil, fmt.Errorf("Could not find Kubelet Config")
-}
-
 func (ctrl *Controller) generateOriginalKubeletConfig(role string) (*ignv2_2types.File, error) {
 	// Enumerate the controller config
 	cc, err := ctrl.ccLister.List(labels.Everything())
@@ -315,95 +279,25 @@ func (ctrl *Controller) generateOriginalKubeletConfig(role string) (*ignv2_2type
 	return nil, fmt.Errorf("Could not generate old kubelet config")
 }
 
-func getManagedKey(pool *mcfgv1.MachineConfigPool, config *mcfgv1.KubeletConfig) string {
-	return fmt.Sprintf("99-%s-%s-kubelet", pool.Name, pool.ObjectMeta.UID)
-}
-
-// validates a KubeletConfig and returns an error if invalid
-func validateUserKubeletConfig(cfg *mcfgv1.KubeletConfig) error {
-	if cfg.Spec.KubeletConfig == nil {
-		return nil
-	}
-	kcValues := reflect.ValueOf(*cfg.Spec.KubeletConfig)
-	if !kcValues.IsValid() {
-		return fmt.Errorf("KubeletConfig is not valid")
-	}
-	for _, bannedFieldName := range blacklistKubeletConfigurationFields {
-		v := kcValues.FieldByName(bannedFieldName)
-		if !v.IsValid() {
-			continue
-		}
-		err := fmt.Errorf("%v is not allowed to be set.", bannedFieldName)
-		switch v.Kind() {
-		case reflect.Slice:
-			if v.Len() > 0 {
-				return err
-			}
-		case reflect.String:
-			if v.String() != "" {
-				return err
-			}
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			if v.Int() != 0 {
-				return err
-			}
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			if v.Uint() != 0 {
-				return err
-			}
-		case reflect.Struct:
-			if v.Type().String() == "v1.Duration" {
-				d := v.Interface().(metav1.Duration)
-				if d.Duration.String() != "0s" {
-					return err
-				}
-			}
-		default:
-			return fmt.Errorf("Invalid type in field %v", bannedFieldName)
-		}
-	}
-
-	return nil
-}
-
-func newCondition(err error, args ...interface{}) mcfgv1.KubeletConfigCondition {
-	condition := mcfgv1.KubeletConfigCondition{}
-	if err != nil {
-		condition.Status = v1.ConditionFalse
-		condition.Message = fmt.Sprintf("Error: %v", err)
-	} else {
-		condition.Status = v1.ConditionTrue
-	}
-	condition.LastTransitionTime = metav1.Time{}
-	if len(args) > 0 {
-		format, ok := args[0].(string)
-		if ok {
-			condition.Message = fmt.Sprintf(format, args[:1]...)
-		}
-	}
-	return condition
-}
-
-func (ctrl *Controller) updateStatus(cfg *mcfgv1.KubeletConfig, err error, args ...interface{}) {
+func (ctrl *Controller) syncStatusOnly(cfg *mcfgv1.KubeletConfig, err error, args ...interface{}) error {
 	// Fetch the latest KubeletConfig
-	ncfg, err := ctrl.mckLister.Get(cfg.Name)
+	newCfg, err := ctrl.mckLister.Get(cfg.Name)
 	if errors.IsNotFound(err) {
 		glog.V(2).Infof("Update Status: KubeletConfig %v has been deleted", cfg.Name)
-		return
+		return nil
 	}
 	if err != nil {
 		glog.V(2).Infof("Update Status: KubeletConfig %v has been deleted", cfg.Name)
-		return
+		return nil
 	}
-	ncfg.Status.Conditions = append(cfg.Status.Conditions, newCondition(err, args))
-	retry.RetryOnConflict(updateBackoff, func() error {
-		_, err := ctrl.client.Machineconfiguration().KubeletConfigs().UpdateStatus(ncfg)
+	newCfg.Status.Conditions = append(newCfg.Status.Conditions, newCondition(err, args))
+	return retry.RetryOnConflict(updateBackoff, func() error {
+		_, err = ctrl.client.MachineconfigurationV1().KubeletConfigs().UpdateStatus(newCfg)
 		if err != nil {
-			glog.Infof("Update Status Failed: KubeletConfig %v  %v", cfg.Name, err)
+			glog.Infof("Update Status Failed: KubeletConfig %v  %v", newCfg.Name, err)
 		}
 		return err
 	})
-	glog.Infof("Update Status Success")
 }
 
 // syncKubeletConfig will sync the kubeletconfig with the given key.
@@ -440,22 +334,19 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 
 	// Validate the KubeletConfig CR
 	if err := validateUserKubeletConfig(cfg); err != nil {
-		ctrl.updateStatus(cfg, err)
-		return err
+		return ctrl.syncStatusOnly(cfg, err)
 	}
 
 	// Find all MachineConfigPools
 	mcpPools, err := ctrl.getPoolsForKubeletConfig(cfg)
 	if err != nil {
-		ctrl.updateStatus(cfg, err)
-		return err
+		return ctrl.syncStatusOnly(cfg, err)
 	}
 
 	if len(mcpPools) == 0 {
 		err := fmt.Errorf("KubeletConfig %v does not match any MachineConfigPools", key)
 		glog.V(2).Infof("%v", err)
-		ctrl.updateStatus(cfg, err)
-		return nil
+		return ctrl.syncStatusOnly(cfg, err)
 	}
 
 	for _, pool := range mcpPools {
@@ -464,8 +355,7 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 		managedKey := getManagedKey(pool, cfg)
 		mc, err := ctrl.client.Machineconfiguration().MachineConfigs().Get(managedKey, metav1.GetOptions{})
 		if err != nil && !errors.IsNotFound(err) {
-			ctrl.updateStatus(cfg, err, "Could not find MachineConfig: %v", managedKey)
-			return err
+			return ctrl.syncStatusOnly(cfg, err, "Could not find MachineConfig: %v", managedKey)
 		}
 		isNotFound := errors.IsNotFound(err)
 		// If the managed MachineConfig exists then try the next pool. This
@@ -476,30 +366,25 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 		// Generate the original KubeletConfig
 		originalKubeletIgn, err := ctrl.generateOriginalKubeletConfig(role)
 		if err != nil {
-			ctrl.updateStatus(cfg, err, "Could not generate the original Kubelet config: %v", err)
-			return err
+			return ctrl.syncStatusOnly(cfg, err, "Could not generate the original Kubelet config: %v", err)
 		}
 		dataURL, err := dataurl.DecodeString(originalKubeletIgn.Contents.Source)
 		if err != nil {
-			ctrl.updateStatus(cfg, err, "Could not decode the original Kubelet source string: %v", err)
-			return err
+			return ctrl.syncStatusOnly(cfg, err, "Could not decode the original Kubelet source string: %v", err)
 		}
 		originalKubeConfig, err := decodeKubeletConfig(dataURL.Data)
 		if err != nil {
-			ctrl.updateStatus(cfg, err, "Could not deserialize the Kubelet source: %v", err)
-			return err
+			return ctrl.syncStatusOnly(cfg, err, "Could not deserialize the Kubelet source: %v", err)
 		}
 		// Merge the Old and New
 		err = mergo.Merge(originalKubeConfig, cfg.Spec.KubeletConfig, mergo.WithOverride)
 		if err != nil {
-			ctrl.updateStatus(cfg, err, "Could not merge original config and new config: %v", err)
-			return err
+			return ctrl.syncStatusOnly(cfg, err, "Could not merge original config and new config: %v", err)
 		}
 		// Encode the new config into YAML
 		cfgYAML, err := encodeKubeletConfig(originalKubeConfig, kubeletconfigv1beta1.SchemeGroupVersion)
 		if err != nil {
-			ctrl.updateStatus(cfg, err, "Could not encode YAML: %v", err)
-			return err
+			return ctrl.syncStatusOnly(cfg, err, "Could not encode YAML: %v", err)
 		}
 		if isNotFound {
 			mc = mtmpl.MachineConfigFromIgnConfig(role, managedKey, &ignv2_2types.Config{})
@@ -526,19 +411,16 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 			}
 			return err
 		}); err != nil {
-			ctrl.updateStatus(cfg, err, "Could not Create/Update MachineConfig: %v", err)
-			return err
+			return ctrl.syncStatusOnly(cfg, err, "Could not Create/Update MachineConfig: %v", err)
 		}
 		// Add Finalizers to the KubletConfig
 		if err := ctrl.addFinalizerToKubeletConfig(cfg, mc); err != nil {
-			ctrl.updateStatus(cfg, err, "Could not add finalizers to KubeletConfig: %v", err)
-			return err
+			return ctrl.syncStatusOnly(cfg, err, "Could not add finalizers to KubeletConfig: %v", err)
 		}
-		ctrl.updateStatus(cfg, nil)
 		glog.Infof("Applied KubeletConfig %v on MachineConfigPool %v", key, pool.Name)
 	}
 
-	return nil
+	return ctrl.syncStatusOnly(cfg, nil)
 }
 
 func (ctrl *Controller) popFinalizerFromKubeletConfig(kc *mcfgv1.KubeletConfig) error {
@@ -616,38 +498,4 @@ func (ctrl *Controller) getPoolsForKubeletConfig(config *mcfgv1.KubeletConfig) (
 	}
 
 	return pools, nil
-}
-
-func decodeKubeletConfig(data []byte) (*kubeletconfigv1beta1.KubeletConfiguration, error) {
-	config := &kubeletconfigv1beta1.KubeletConfiguration{}
-	d := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), len(data))
-	if err := d.Decode(config); err != nil {
-		return nil, err
-	}
-	return config, nil
-}
-
-func encodeKubeletConfig(internal *kubeletconfigv1beta1.KubeletConfiguration, targetVersion schema.GroupVersion) ([]byte, error) {
-	encoder, err := newKubeletconfigYAMLEncoder(targetVersion)
-	if err != nil {
-		return nil, err
-	}
-	data, err := runtime.Encode(encoder, internal)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
-}
-
-func newKubeletconfigYAMLEncoder(targetVersion schema.GroupVersion) (runtime.Encoder, error) {
-	_, codecs, err := kubeletconfigscheme.NewSchemeAndCodecs()
-	if err != nil {
-		return nil, err
-	}
-	mediaType := "application/yaml"
-	info, ok := runtime.SerializerInfoForMediaType(codecs.SupportedMediaTypes(), mediaType)
-	if !ok {
-		return nil, fmt.Errorf("unsupported media type %q", mediaType)
-	}
-	return codecs.EncoderForVersion(info.Serializer, targetVersion), nil
 }
