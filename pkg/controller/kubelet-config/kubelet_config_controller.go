@@ -28,6 +28,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 
+	oseinformersv1 "github.com/openshift/client-go/config/informers/externalversions/config/v1"
+	oselistersv1 "github.com/openshift/client-go/config/listers/config/v1"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	mtmpl "github.com/openshift/machine-config-operator/pkg/controller/template"
@@ -86,6 +88,9 @@ type Controller struct {
 	mcpLister       mcfglistersv1.MachineConfigPoolLister
 	mcpListerSynced cache.InformerSynced
 
+	featLister       oselistersv1.FeaturesLister
+	featListerSynced cache.InformerSynced
+
 	queue workqueue.RateLimitingInterface
 }
 
@@ -95,6 +100,7 @@ func New(
 	mcpInformer mcfginformersv1.MachineConfigPoolInformer,
 	ccInformer mcfginformersv1.ControllerConfigInformer,
 	mkuInformer mcfginformersv1.KubeletConfigInformer,
+	featInformer oseinformersv1.FeaturesInformer,
 	kubeClient clientset.Interface,
 	mcfgClient mcfgclientset.Interface,
 ) *Controller {
@@ -127,6 +133,9 @@ func New(
 	ctrl.mckLister = mkuInformer.Lister()
 	ctrl.mckListerSynced = mkuInformer.Informer().HasSynced
 
+	ctrl.featLister = featInformer.Lister()
+	ctrl.featListerSynced = featInformer.Informer().HasSynced
+
 	return ctrl
 }
 
@@ -138,7 +147,7 @@ func (ctrl *Controller) Run(workers int, stopCh <-chan struct{}) {
 	glog.Info("Starting MachineConfigController-KubeletConfigController")
 	defer glog.Info("Shutting down MachineConfigController-KubeletConfigController")
 
-	if !cache.WaitForCacheSync(stopCh, ctrl.mcpListerSynced, ctrl.mckListerSynced, ctrl.ccListerSynced) {
+	if !cache.WaitForCacheSync(stopCh, ctrl.mcpListerSynced, ctrl.mckListerSynced, ctrl.ccListerSynced, ctrl.featListerSynced) {
 		return
 	}
 
@@ -233,6 +242,23 @@ func (ctrl *Controller) processNextWorkItem() bool {
 	ctrl.handleErr(err, key)
 
 	return true
+}
+
+func (ctrl *Controller) getFeatures() (*map[string]bool, error) {
+	features, err := ctrl.featLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	rv := make(map[string]bool)
+	for _, feature := range features {
+		for _, featEnabled := range feature.Spec.Enabled {
+			rv[featEnabled] = true
+		}
+		for _, featDisabled := range feature.Spec.Disabled {
+			rv[featDisabled] = false
+		}
+	}
+	return &rv, nil
 }
 
 func (ctrl *Controller) handleErr(err error, key interface{}) {
@@ -346,6 +372,13 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 		return ctrl.syncStatusOnly(cfg, err)
 	}
 
+	featureGates, err := ctrl.getFeatures()
+	if err != nil {
+		err := fmt.Errorf("Could not fetch FeatureGates: %v", err)
+		glog.V(2).Infof("%v", err)
+		return ctrl.syncStatusOnly(cfg, err)
+	}
+
 	for _, pool := range mcpPools {
 		role := pool.Name
 		// Get MachineConfig
@@ -372,6 +405,11 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 		err = mergo.Merge(originalKubeConfig, cfg.Spec.KubeletConfig, mergo.WithOverride)
 		if err != nil {
 			return ctrl.syncStatusOnly(cfg, err, "Could not merge original config and new config: %v", err)
+		}
+		// Merge in Feature Gates
+		err = mergo.Merge(&originalKubeConfig.FeatureGates, featureGates, mergo.WithOverride)
+		if err != nil {
+			return ctrl.syncStatusOnly(cfg, err, "Could not merge FeatureGates: %v", err)
 		}
 		// Encode the new config into YAML
 		cfgYAML, err := encodeKubeletConfig(originalKubeConfig, kubeletconfigv1beta1.SchemeGroupVersion)

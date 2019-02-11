@@ -4,6 +4,7 @@ import (
 	"time"
 
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
+	oseinformersv1 "github.com/openshift/client-go/config/informers/externalversions"
 	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
 	apiextinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -20,6 +21,7 @@ type ControllerContext struct {
 	KubeNamespacedInformerFactory informers.SharedInformerFactory
 	APIExtInformerFactory         apiextinformers.SharedInformerFactory
 	ConfigInformerFactory         configinformers.SharedInformerFactory
+	FeatureInformerFactory        oseinformersv1.SharedInformerFactory
 
 	AvailableResources map[schema.GroupVersionResource]bool
 
@@ -36,12 +38,14 @@ func CreateControllerContext(cb *ClientBuilder, stop <-chan struct{}, targetName
 	kubeClient := cb.KubeClientOrDie("kube-shared-informer")
 	apiExtClient := cb.APIExtClientOrDie("apiext-shared-informer")
 	configClient := cb.ConfigClientOrDie("config-shared-informer")
+	oseClient := cb.ConfigClientOrDie("ose-shared-informer")
 	sharedInformers := mcfginformers.NewSharedInformerFactory(client, resyncPeriod()())
 	sharedNamespacedInformers := mcfginformers.NewFilteredSharedInformerFactory(client, resyncPeriod()(), targetNamespace, nil)
 	kubeSharedInformer := informers.NewSharedInformerFactory(kubeClient, resyncPeriod()())
 	kubeNamespacedSharedInformer := informers.NewFilteredSharedInformerFactory(kubeClient, resyncPeriod()(), targetNamespace, nil)
 	apiExtSharedInformer := apiextinformers.NewSharedInformerFactory(apiExtClient, resyncPeriod()())
 	configSharedInformer := configinformers.NewSharedInformerFactory(configClient, resyncPeriod()())
+	featInformer := oseinformersv1.NewSharedInformerFactory(oseClient, resyncPeriod()())
 
 	return &ControllerContext{
 		ClientBuilder:                 cb,
@@ -51,8 +55,9 @@ func CreateControllerContext(cb *ClientBuilder, stop <-chan struct{}, targetName
 		KubeNamespacedInformerFactory: kubeNamespacedSharedInformer,
 		APIExtInformerFactory:         apiExtSharedInformer,
 		ConfigInformerFactory:         configSharedInformer,
-		Stop:             stop,
-		InformersStarted: make(chan struct{}),
-		ResyncPeriod:     resyncPeriod(),
+		FeatureInformerFactory:        featInformer,
+		Stop:                          stop,
+		InformersStarted:              make(chan struct{}),
+		ResyncPeriod:                  resyncPeriod(),
 	}
 }

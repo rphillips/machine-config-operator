@@ -96,6 +96,7 @@ func startControllers(ctx *common.ControllerContext) error {
 		ctx.InformerFactory.Machineconfiguration().V1().MachineConfigPools(),
 		ctx.InformerFactory.Machineconfiguration().V1().ControllerConfigs(),
 		ctx.InformerFactory.Machineconfiguration().V1().KubeletConfigs(),
+		ctx.FeatureInformerFactory.Config().V1().Features(),
 		ctx.ClientBuilder.KubeClientOrDie("kubelet-config-controller"),
 		ctx.ClientBuilder.MachineConfigClientOrDie("kubelet-config-controller"),
 	).Run(2, ctx.Stop)
