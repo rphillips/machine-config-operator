@@ -65,7 +65,7 @@ func validateUserKubeletConfig(cfg *mcfgv1.KubeletConfig) error {
 		if !v.IsValid() {
 			continue
 		}
-		err := fmt.Errorf("%v is not allowed to be set.", bannedFieldName)
+		err := fmt.Errorf("%v is not allowed to be set", bannedFieldName)
 		switch v.Kind() {
 		case reflect.Slice:
 			if v.Len() > 0 {

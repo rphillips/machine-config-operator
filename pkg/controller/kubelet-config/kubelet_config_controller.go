@@ -91,7 +91,8 @@ type Controller struct {
 	featLister       oselistersv1.FeaturesLister
 	featListerSynced cache.InformerSynced
 
-	queue workqueue.RateLimitingInterface
+	queue        workqueue.RateLimitingInterface
+	featureQueue workqueue.RateLimitingInterface
 }
 
 // New returns a new kubelet config controller
@@ -113,12 +114,19 @@ func New(
 		client:        mcfgClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "machineconfigcontroller-kubeletconfigcontroller"}),
 		queue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "machineconfigcontroller-kubeletconfigcontroller"),
+		featureQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "machineconfigcontroller-kubeletconfigcontroller"),
 	}
 
 	mkuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ctrl.addKubeletConfig,
 		UpdateFunc: ctrl.updateKubeletConfig,
 		DeleteFunc: ctrl.deleteKubeletConfig,
+	})
+
+	featInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    ctrl.addFeature,
+		UpdateFunc: ctrl.updateFeature,
+		DeleteFunc: ctrl.deleteFeature,
 	})
 
 	ctrl.syncHandler = ctrl.syncKubeletConfig
@@ -143,6 +151,7 @@ func New(
 func (ctrl *Controller) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer ctrl.queue.ShutDown()
+	defer ctrl.featureQueue.ShutDown()
 
 	glog.Info("Starting MachineConfigController-KubeletConfigController")
 	defer glog.Info("Shutting down MachineConfigController-KubeletConfigController")
@@ -155,8 +164,16 @@ func (ctrl *Controller) Run(workers int, stopCh <-chan struct{}) {
 		go wait.Until(ctrl.worker, time.Second, stopCh)
 	}
 
+	for i := 0; i < workers; i++ {
+		go wait.Until(ctrl.featureWorker, time.Second, stopCh)
+	}
+
 	<-stopCh
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// KubeletConfig
+///////////////////////////////////////////////////////////////////////////////
 
 func (ctrl *Controller) updateKubeletConfig(old, cur interface{}) {
 	oldConfig := old.(*mcfgv1.KubeletConfig)
@@ -242,23 +259,6 @@ func (ctrl *Controller) processNextWorkItem() bool {
 	ctrl.handleErr(err, key)
 
 	return true
-}
-
-func (ctrl *Controller) getFeatures() (*map[string]bool, error) {
-	features, err := ctrl.featLister.List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-	rv := make(map[string]bool)
-	for _, feature := range features {
-		for _, featEnabled := range feature.Spec.Enabled {
-			rv[featEnabled] = true
-		}
-		for _, featDisabled := range feature.Spec.Disabled {
-			rv[featDisabled] = false
-		}
-	}
-	return &rv, nil
 }
 
 func (ctrl *Controller) handleErr(err error, key interface{}) {
