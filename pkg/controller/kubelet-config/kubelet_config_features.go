@@ -5,7 +5,6 @@ import (
 	"reflect"
 
 	"github.com/golang/glog"
-	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 
@@ -15,6 +14,10 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // Features
 ///////////////////////////////////////////////////////////////////////////////
+
+const (
+	clusterFeatureInstanceName = "cluster"
+)
 
 func (ctrl *Controller) featureWorker() {
 	for ctrl.processNextFeatureWorkItem() {
@@ -79,18 +82,20 @@ func (ctrl *Controller) deleteFeature(obj interface{}) {
 }
 
 func (ctrl *Controller) getFeatures() (*map[string]bool, error) {
-	features, err := ctrl.featLister.List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
 	rv := make(map[string]bool)
-	for _, feature := range features {
-		for _, featEnabled := range feature.Spec.Enabled {
-			rv[featEnabled] = true
-		}
-		for _, featDisabled := range feature.Spec.Disabled {
-			rv[featDisabled] = false
-		}
+	features, err := ctrl.featLister.Get(clusterFeatureInstanceName)
+	if err != nil {
+		return &rv, err
+	}
+	set, ok := osev1.FeatureSets[features.Spec.FeatureSet]
+	if !ok {
+		return &rv, fmt.Errorf("Enabled FeatureSet %v does not have a corresponding config", features.Spec.FeatureSet)
+	}
+	for _, featEnabled := range set.Enabled {
+		rv[featEnabled] = true
+	}
+	for _, featDisabled := range set.Disabled {
+		rv[featDisabled] = false
 	}
 	return &rv, nil
 }

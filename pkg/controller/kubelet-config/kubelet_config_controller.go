@@ -373,7 +373,7 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 	}
 
 	featureGates, err := ctrl.getFeatures()
-	if err != nil {
+	if err != nil && !errors.IsNotFound(err) {
 		err := fmt.Errorf("Could not fetch FeatureGates: %v", err)
 		glog.V(2).Infof("%v", err)
 		return ctrl.syncStatusOnly(cfg, err)

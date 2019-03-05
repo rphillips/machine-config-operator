@@ -105,10 +105,7 @@ func newFeatures(name string, enabled, disabled []string, labels map[string]stri
 	return &osev1.Features{
 		TypeMeta:   metav1.TypeMeta{APIVersion: osev1.GroupVersion.String()},
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels, UID: types.UID(utilrand.String(5))},
-		Spec: osev1.FeaturesSpec{
-			Enabled:  enabled,
-			Disabled: disabled,
-		},
+		Spec:       osev1.FeaturesSpec{FeatureSet: ""},
 	}
 }
 
@@ -493,7 +490,7 @@ func TestKubeletFeatureExists(t *testing.T) {
 			f.mckLister = append(f.mckLister, kc1)
 			f.objects = append(f.objects, kc1)
 
-			features := newFeatures("feature1", []string{"DynamicAuditing"}, []string{"ExpandPersistentVolumes"}, nil)
+			features := newFeatures("cluster", []string{"DynamicAuditing"}, []string{"ExpandPersistentVolumes"}, nil)
 			f.featLister = append(f.featLister, features)
 
 			f.expectGetMachineConfigAction(mcs)
