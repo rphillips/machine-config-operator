@@ -318,7 +318,7 @@ func TestKubeletConfigCreate(t *testing.T) {
 			mcp := newMachineConfigPool("master", map[string]string{"kubeletType": "small-pods"}, metav1.AddLabelToSelector(&metav1.LabelSelector{}, "node-role", "master"), "v0")
 			mcp2 := newMachineConfigPool("worker", map[string]string{"kubeletType": "large-pods"}, metav1.AddLabelToSelector(&metav1.LabelSelector{}, "node-role", "worker"), "v0")
 			kc1 := newKubeletConfig("smaller-max-pods", &kubeletconfigv1beta1.KubeletConfiguration{MaxPods: 100}, metav1.AddLabelToSelector(&metav1.LabelSelector{}, "kubeletType", "small-pods"))
-			mcs := newMachineConfig(getManagedKey(mcp, kc1), map[string]string{"node-role": "master"}, "dummy://", []ignv2_2types.File{{}})
+			mcs := newMachineConfig(getManagedKubeletConfigKey(mcp), map[string]string{"node-role": "master"}, "dummy://", []ignv2_2types.File{{}})
 
 			f.ccLister = append(f.ccLister, cc)
 			f.mcpLister = append(f.mcpLister, mcp)
@@ -345,7 +345,7 @@ func TestKubeletConfigUpdates(t *testing.T) {
 			mcp := newMachineConfigPool("master", map[string]string{"kubeletType": "small-pods"}, metav1.AddLabelToSelector(&metav1.LabelSelector{}, "node-role", "master"), "v0")
 			mcp2 := newMachineConfigPool("worker", map[string]string{"kubeletType": "large-pods"}, metav1.AddLabelToSelector(&metav1.LabelSelector{}, "node-role", "worker"), "v0")
 			kc1 := newKubeletConfig("smaller-max-pods", &kubeletconfigv1beta1.KubeletConfiguration{MaxPods: 100}, metav1.AddLabelToSelector(&metav1.LabelSelector{}, "kubeletType", "small-pods"))
-			mcs := newMachineConfig(getManagedKey(mcp, kc1), map[string]string{"node-role": "master"}, "dummy://", []ignv2_2types.File{{}})
+			mcs := newMachineConfig(getManagedKubeletConfigKey(mcp), map[string]string{"node-role": "master"}, "dummy://", []ignv2_2types.File{{}})
 
 			f.ccLister = append(f.ccLister, cc)
 			f.mcpLister = append(f.mcpLister, mcp)
@@ -482,7 +482,7 @@ func TestKubeletFeatureExists(t *testing.T) {
 			mcp := newMachineConfigPool("master", map[string]string{"kubeletType": "small-pods"}, metav1.AddLabelToSelector(&metav1.LabelSelector{}, "node-role", "master"), "v0")
 			mcp2 := newMachineConfigPool("worker", map[string]string{"kubeletType": "large-pods"}, metav1.AddLabelToSelector(&metav1.LabelSelector{}, "node-role", "worker"), "v0")
 			kc1 := newKubeletConfig("smaller-max-pods", &kubeletconfigv1beta1.KubeletConfiguration{MaxPods: 100}, metav1.AddLabelToSelector(&metav1.LabelSelector{}, "kubeletType", "small-pods"))
-			mcs := newMachineConfig(getManagedKey(mcp, kc1), map[string]string{"node-role": "master"}, "dummy://", []ignv2_2types.File{{}})
+			mcs := newMachineConfig(getManagedKubeletConfigKey(mcp), map[string]string{"node-role": "master"}, "dummy://", []ignv2_2types.File{{}})
 
 			f.ccLister = append(f.ccLister, cc)
 			f.mcpLister = append(f.mcpLister, mcp)

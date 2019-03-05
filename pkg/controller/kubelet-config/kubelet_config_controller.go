@@ -372,9 +372,16 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 		return ctrl.syncStatusOnly(cfg, err)
 	}
 
-	featureGates, err := ctrl.getFeatures()
+	features, err := ctrl.featLister.Get(clusterFeatureInstanceName)
 	if err != nil && !errors.IsNotFound(err) {
 		err := fmt.Errorf("Could not fetch FeatureGates: %v", err)
+		glog.V(2).Infof("%v", err)
+		return ctrl.syncStatusOnly(cfg, err)
+	}
+	features = features.DeepCopy()
+	featureGates, err := ctrl.generateFeatureMap(features)
+	if err != nil {
+		err := fmt.Errorf("Could not generate FeatureMap: %v", err)
 		glog.V(2).Infof("%v", err)
 		return ctrl.syncStatusOnly(cfg, err)
 	}
@@ -382,7 +389,7 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 	for _, pool := range mcpPools {
 		role := pool.Name
 		// Get MachineConfig
-		managedKey := getManagedKey(pool, cfg)
+		managedKey := getManagedKubeletConfigKey(pool)
 		mc, err := ctrl.client.Machineconfiguration().MachineConfigs().Get(managedKey, metav1.GetOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			return ctrl.syncStatusOnly(cfg, err, "Could not find MachineConfig: %v", managedKey)

@@ -47,7 +47,11 @@ func findKubeletConfig(mc *mcfgv1.MachineConfig) (*ignv2_2types.File, error) {
 	return nil, fmt.Errorf("Could not find Kubelet Config")
 }
 
-func getManagedKey(pool *mcfgv1.MachineConfigPool, config *mcfgv1.KubeletConfig) string {
+func getManagedFeaturesKey(pool *mcfgv1.MachineConfigPool) string {
+	return fmt.Sprintf("98-%s-%s-kubelet", pool.Name, pool.ObjectMeta.UID)
+}
+
+func getManagedKubeletConfigKey(pool *mcfgv1.MachineConfigPool) string {
 	return fmt.Sprintf("99-%s-%s-kubelet", pool.Name, pool.ObjectMeta.UID)
 }
 
