@@ -38,14 +38,13 @@ func CreateControllerContext(cb *ClientBuilder, stop <-chan struct{}, targetName
 	kubeClient := cb.KubeClientOrDie("kube-shared-informer")
 	apiExtClient := cb.APIExtClientOrDie("apiext-shared-informer")
 	configClient := cb.ConfigClientOrDie("config-shared-informer")
-	oseClient := cb.ConfigClientOrDie("ose-shared-informer")
 	sharedInformers := mcfginformers.NewSharedInformerFactory(client, resyncPeriod()())
 	sharedNamespacedInformers := mcfginformers.NewFilteredSharedInformerFactory(client, resyncPeriod()(), targetNamespace, nil)
 	kubeSharedInformer := informers.NewSharedInformerFactory(kubeClient, resyncPeriod()())
 	kubeNamespacedSharedInformer := informers.NewFilteredSharedInformerFactory(kubeClient, resyncPeriod()(), targetNamespace, nil)
 	apiExtSharedInformer := apiextinformers.NewSharedInformerFactory(apiExtClient, resyncPeriod()())
 	configSharedInformer := configinformers.NewSharedInformerFactory(configClient, resyncPeriod()())
-	featInformer := oseinformersv1.NewSharedInformerFactory(oseClient, resyncPeriod()())
+	featInformer := oseinformersv1.NewSharedInformerFactory(configClient, resyncPeriod()())
 
 	return &ControllerContext{
 		ClientBuilder:                 cb,

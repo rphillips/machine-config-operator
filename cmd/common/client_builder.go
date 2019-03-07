@@ -4,12 +4,12 @@ import (
 	"os"
 
 	"github.com/golang/glog"
-	configclientset "github.com/openshift/client-go/config/clientset/versioned"
 	apiext "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	configclientset "github.com/openshift/client-go/config/clientset/versioned"
 	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
 )
 

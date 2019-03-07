@@ -114,7 +114,7 @@ func New(
 		client:        mcfgClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "machineconfigcontroller-kubeletconfigcontroller"}),
 		queue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "machineconfigcontroller-kubeletconfigcontroller"),
-		featureQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "machineconfigcontroller-kubeletconfigcontroller"),
+		featureQueue:  workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "machineconfigcontroller-featurecontroller"),
 	}
 
 	mkuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -277,6 +277,24 @@ func (ctrl *Controller) handleErr(err error, key interface{}) {
 	glog.V(2).Infof("Dropping kubeletconfig %q out of the queue: %v", key, err)
 	ctrl.queue.Forget(key)
 	ctrl.queue.AddAfter(key, 1*time.Minute)
+}
+
+func (ctrl *Controller) handleFeatureErr(err error, key interface{}) {
+	if err == nil {
+		ctrl.featureQueue.Forget(key)
+		return
+	}
+
+	if ctrl.featureQueue.NumRequeues(key) < maxRetries {
+		glog.V(2).Infof("Error syncing kubeletconfig %v: %v", key, err)
+		ctrl.featureQueue.AddRateLimited(key)
+		return
+	}
+
+	utilruntime.HandleError(err)
+	glog.V(2).Infof("Dropping featureconfig %q out of the queue: %v", key, err)
+	ctrl.featureQueue.Forget(key)
+	ctrl.featureQueue.AddAfter(key, 1*time.Minute)
 }
 
 func (ctrl *Controller) generateOriginalKubeletConfig(role string) (*ignv2_2types.File, error) {

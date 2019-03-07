@@ -34,6 +34,7 @@ const (
 )
 
 func (ctrl *Controller) featureWorker() {
+	glog.Infof("FeatureWorker")
 	for ctrl.processNextFeatureWorkItem() {
 	}
 }
@@ -46,7 +47,7 @@ func (ctrl *Controller) processNextFeatureWorkItem() bool {
 	defer ctrl.featureQueue.Done(key)
 
 	err := ctrl.syncFeatureHandler(key.(string))
-	ctrl.handleErr(err, key)
+	ctrl.handleFeatureErr(err, key)
 	return true
 }
 
