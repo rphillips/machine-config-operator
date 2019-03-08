@@ -121,7 +121,8 @@ required = [
 
 [[constraint]]
   name = "k8s.io/code-generator"
-  version = "kubernetes-1.12.5"
+  source = "github.com/openshift/kubernetes-code-generator"
+  branch = "origin-4.0-kubernetes-1.12.4"
 
 [[constraint]]
   name = "k8s.io/kubelet"
