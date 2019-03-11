@@ -4,7 +4,6 @@ import (
 	"time"
 
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
-	oseinformersv1 "github.com/openshift/client-go/config/informers/externalversions"
 	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
 	apiextinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,7 +20,6 @@ type ControllerContext struct {
 	KubeNamespacedInformerFactory informers.SharedInformerFactory
 	APIExtInformerFactory         apiextinformers.SharedInformerFactory
 	ConfigInformerFactory         configinformers.SharedInformerFactory
-	FeatureInformerFactory        oseinformersv1.SharedInformerFactory
 
 	AvailableResources map[schema.GroupVersionResource]bool
 
@@ -44,7 +42,6 @@ func CreateControllerContext(cb *ClientBuilder, stop <-chan struct{}, targetName
 	kubeNamespacedSharedInformer := informers.NewFilteredSharedInformerFactory(kubeClient, resyncPeriod()(), targetNamespace, nil)
 	apiExtSharedInformer := apiextinformers.NewSharedInformerFactory(apiExtClient, resyncPeriod()())
 	configSharedInformer := configinformers.NewSharedInformerFactory(configClient, resyncPeriod()())
-	featInformer := oseinformersv1.NewSharedInformerFactory(configClient, resyncPeriod()())
 
 	return &ControllerContext{
 		ClientBuilder:                 cb,
@@ -54,7 +51,6 @@ func CreateControllerContext(cb *ClientBuilder, stop <-chan struct{}, targetName
 		KubeNamespacedInformerFactory: kubeNamespacedSharedInformer,
 		APIExtInformerFactory:         apiExtSharedInformer,
 		ConfigInformerFactory:         configSharedInformer,
-		FeatureInformerFactory:        featInformer,
 		Stop:                          stop,
 		InformersStarted:              make(chan struct{}),
 		ResyncPeriod:                  resyncPeriod(),

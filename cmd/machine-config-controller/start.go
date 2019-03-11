@@ -60,7 +60,6 @@ func runStartCmd(cmd *cobra.Command, args []string) {
 		ctrlctx.InformerFactory.Start(ctrlctx.Stop)
 		ctrlctx.KubeInformerFactory.Start(ctrlctx.Stop)
 		ctrlctx.ConfigInformerFactory.Start(ctrlctx.Stop)
-		ctrlctx.FeatureInformerFactory.Start(ctrlctx.Stop)
 
 		close(ctrlctx.InformersStarted)
 
@@ -98,7 +97,7 @@ func startControllers(ctx *common.ControllerContext) error {
 		ctx.InformerFactory.Machineconfiguration().V1().MachineConfigPools(),
 		ctx.InformerFactory.Machineconfiguration().V1().ControllerConfigs(),
 		ctx.InformerFactory.Machineconfiguration().V1().KubeletConfigs(),
-		ctx.FeatureInformerFactory.Config().V1().Features(),
+		ctx.ConfigInformerFactory.Config().V1().Features(),
 		ctx.ClientBuilder.KubeClientOrDie("kubelet-config-controller"),
 		ctx.ClientBuilder.MachineConfigClientOrDie("kubelet-config-controller"),
 	).Run(2, ctx.Stop)
