@@ -28,7 +28,7 @@ contents: |
         --cloud-provider={{cloudProvider .}} \
         {{cloudConfigFlag . }} \
         --anonymous-auth=false \
-        --v=3 \
+        --v=5 \
 
   Restart=always
   RestartSec=10
