@@ -112,13 +112,18 @@ func (optr *Operator) syncRenderConfig(_ *renderConfig) error {
 	}
 	// as described by the name this is essentially static, but it no worse than what was here before.  Since changes disrupt workloads
 	// and since must perfectly match what the installer creates, this is effectively frozen in time.
-	kubeAPIServerServingCABytes, err := optr.getCAsFromConfigMap("openshift-config", "initial-kube-apiserver-server-ca", "ca-bundle.crt")
+	initialKubeAPIServerServingCABytes, err := optr.getCAsFromConfigMap("openshift-config", "initial-kube-apiserver-server-ca", "ca-bundle.crt")
 	if err != nil {
 		return err
 	}
+	kubeAPIServerServingCA, err := optr.getCAsFromConfigMap("openshift-kube-apiserver-operator", "kube-apiserver-to-kubelet-client-ca", "ca-bundle.crt")
+	if err != nil {
+		glog.Warningf("Could not retreive kube-apiserver-to-kubelet-client-ca (using initial CA): %v", err)
+		kubeAPIServerServingCA = initialKubeAPIServerServingCABytes
+	}
 	bundle := make([]byte, 0)
 	bundle = append(bundle, rootCA...)
-	bundle = append(bundle, kubeAPIServerServingCABytes...)
+	bundle = append(bundle, initialKubeAPIServerServingCABytes...)
 
 	// sync up os image url
 	// TODO: this should probably be part of the imgs
@@ -147,6 +152,7 @@ func (optr *Operator) syncRenderConfig(_ *renderConfig) error {
 		spec.CloudProviderConfig = cc
 	}
 
+	spec.KubeAPIServerServingCAData = kubeAPIServerServingCA
 	spec.EtcdCAData = etcdCA
 	spec.EtcdMetricCAData = etcdMetricCA
 	spec.RootCAData = bundle
@@ -160,7 +166,7 @@ func (optr *Operator) syncRenderConfig(_ *renderConfig) error {
 	}
 
 	// create renderConfig
-	optr.renderConfig = getRenderConfig(optr.namespace, string(kubeAPIServerServingCABytes), spec, &imgs.RenderConfigImages, infra.Status.APIServerURL)
+	optr.renderConfig = getRenderConfig(optr.namespace, string(initialKubeAPIServerServingCABytes), spec, &imgs.RenderConfigImages, infra.Status.APIServerURL)
 	return nil
 }
 

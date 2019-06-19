@@ -76,6 +76,8 @@ type ControllerConfigSpec struct {
 	// etcdMetricData specifies the etcd metric CA data
 	EtcdMetricCAData []byte `json:"etcdMetricCAData"`
 
+	KubeAPIServerServingCAData []byte `json:"kubeAPIServerServingCAData"`
+
 	// rootCAData specifies the root CA data
 	RootCAData []byte `json:"rootCAData"`
 

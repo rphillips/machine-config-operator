@@ -8,7 +8,7 @@ rules:
   resources: ["nodes"]
   verbs: ["get", "list", "watch", "patch", "update"]
 - apiGroups: [""]
-  resources: ["pods"]
+  resources: ["pods", "configmaps"]
   verbs: ["*"]
 - apiGroups: ["extensions"]
   resources: ["daemonsets"]
