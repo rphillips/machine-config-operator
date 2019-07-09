@@ -231,13 +231,13 @@ func (in *ControllerConfigSpec) DeepCopyInto(out *ControllerConfigSpec) {
 		*out = make([]byte, len(*in))
 		copy(*out, *in)
 	}
-	if in.RootCAData != nil {
-		in, out := &in.RootCAData, &out.RootCAData
+	if in.KubeAPIServerServingCAData != nil {
+		in, out := &in.KubeAPIServerServingCAData, &out.KubeAPIServerServingCAData
 		*out = make([]byte, len(*in))
 		copy(*out, *in)
 	}
-	if in.KubeAPIServerServingCAData != nil {
-		in, out := &in.KubeAPIServerServingCAData, &out.KubeAPIServerServingCAData
+	if in.RootCAData != nil {
+		in, out := &in.RootCAData, &out.RootCAData
 		*out = make([]byte, len(*in))
 		copy(*out, *in)
 	}
