@@ -12,7 +12,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/vincent-petithory/dataurl"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -51,7 +51,7 @@ const (
 
 var (
 	// controllerKind contains the schema.GroupVersionKind for this controller type.
-	controllerKind = mcfgv1.SchemeGroupVersion.WithKind("ContainerRuntimeConfig")
+	controllerKind = mcfgv1.SchemeGroupVersion.WithKind("KubeletConfig")
 )
 
 var updateBackoff = wait.Backoff{
@@ -157,7 +157,7 @@ func New(
 
 	ctrl.featLister = featInformer.Lister()
 	ctrl.featListerSynced = featInformer.Informer().HasSynced
-	
+
 	ctrl.patchKubeletConfigsFunc = ctrl.patchKubeletConfigs
 
 	return ctrl
