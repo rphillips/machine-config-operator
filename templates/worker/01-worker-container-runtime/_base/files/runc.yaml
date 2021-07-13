@@ -1,0 +1,11 @@
+mode: 0644
+path: "/etc/crio/crio.conf.d/20-runc"
+contents:
+  inline: |
+    [crio.runtime]
+    default_runtime = "crun"
+
+    [crio.runtime.runtimes]
+    [crio.runtime.runtimes.crun]
+    runtime_path = "/bin/crun"
+
